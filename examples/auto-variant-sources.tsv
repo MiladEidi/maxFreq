@@ -1,0 +1,13 @@
+source	path	chr_col	start_col	end_col	ref_col	alt_col	frequency_fields	min_an	require_an	priority
+Abraom	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_abraom.txt	1	2	3	4	5	abraom_freq	1000	false	10
+1000GP	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_ALL.sites.2015_08.txt	1	2	0	3	4	5	1000	false	5
+GME	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_gme.txt	1	2	3	4	5	GME_AF	1000	false	6
+ExAC	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_exac03.txt	1	2	3	4	5	ExAC_ALL	1000	false	5
+gnomad211_exome	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_gnomad211_exome_sorted.txt	1	2	3	4	5	gnomad211_exome	1000	false	5
+gnomad211_genome	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_gnomad211_genome.txt	1	2	3	4	5	gnomad_Genome_AF	1000	false	5
+gnomad41_exome	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_gnomad41_exome_sorted.txt	1	2	3	4	5	gnomad41_exome_AF	1000	false	5
+gnomad41_genome	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_gnomad41_genome_sorted.txt	1	2	3	4	5	gnomad41_genome_AF	1000	false	5
+hrcr1	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_hrcr1.txt	1	2	3	4	5	HRC_AF	1000	false	5
+Iranome	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_iranome.txt	1	2	3	4	5	Iranome_AF	1000	false	8
+Kaviar	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_kaviar.txt	1	2	3	4	5	Kaviar_AF	1000	false	6
+esp6500siv2_all	E:\NGSneeds\Annovar_Databases\hg19_databases\hg19_esp6500siv2_all.txt	1	2	3	4	5	6	1000	false	6

@@ -1,0 +1,12 @@
+.agents/
+.codex/
+build/
+target/
+
+*.class
+*.jar
+*.log
+
+.env
+.env.*
+!.env.example

@@ -1,0 +1,2 @@
+source	path	chr_col	start_col	end_col	ref_col	alt_col	frequency_fields	min_an	require_an	priority
+headerSource	header_source.tsv	1	2	3	4	5	global_AF:global:global_AC:global_AN;AFR_AF:AFR:AFR_AC:AFR_AN	1000	true	10

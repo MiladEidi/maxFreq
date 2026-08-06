@@ -1,0 +1,9 @@
+# chr_col/start_col/end_col/ref_col/alt_col can be omitted or blank when source headers use common names.
+# One-based column numbers or case-insensitive header substrings. frequency_fields syntax:
+# AF_COLUMN:POPULATION[:AC_COLUMN[:AN_COLUMN[:SCALE]]]
+# Use 0 or blank for unavailable AC/AN columns. SCALE=100 means input values are percentages.
+# Header substrings can be partial, for example gnomAD_AF:global or AF_nfe:NFE:AC_nfe:AN_nfe.
+source	path	chr_col	start_col	end_col	ref_col	alt_col	frequency_fields	min_an	require_an	priority
+gnomad41_exome	data/hg38_gnomad41_exome.txt.gz	1	2	3	4	5	6:global:0:0;7:AFR:0:0;8:AMR:0:0;9:ASJ:0:0;10:EAS:0:0;11:FIN:0:0;12:MID:0:0;13:NFE:0:0;14:SAS:0:0	0	false	10
+gnomad41_genome	data/hg38_gnomad41_genome.txt.gz	1	2	3	4	5	6:global:0:0;7:AFR:0:0;8:AMR:0:0;9:ASJ:0:0;10:EAS:0:0;11:FIN:0:0;12:MID:0:0;13:NFE:0:0;14:SAS:0:0	0	false	20
+regional_database	data/hg38_regional.txt.gz	1	2	3	4	5	6:regional:7:8	2000	true	30
