@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * CLI entry point for building and validating MaxFreq databases.
+ * CLI entry point for building and validating integrated frequency databases.
  *
  * @author Milad EIDI
  */
@@ -44,10 +44,13 @@ public final class MaxFreqMain {
         Arguments options = Arguments.parse(args, 1);
         Path config = options.requiredPath("config");
         Path output = options.requiredPath("output");
+        Path subpopulations = options.optionalPath("subpopulations", Path.of(output.toString() + ".subpopulations.tsv.gz"));
         Path details = options.optionalPath("details", Path.of(output.toString() + ".details.tsv.gz"));
         Path regions = options.optionalPath("regions", null);
         double minAf = options.optionalDouble("min-af", 0.0);
         long progressEvery = options.optionalLong("progress-every", 1_000_000L);
+        boolean skipBadRows = parseBoolean(options.optional("skip-bad-rows", "false"), "skip-bad-rows");
+        long maxBadRows = options.optionalLong("max-bad-rows", 1000L);
 
         List<SourceSpec> specs = ConfigParser.parse(config);
         validateSourceFiles(specs);
@@ -59,14 +62,15 @@ public final class MaxFreqMain {
             regionFilter = RegionFilter.parse(regions);
             System.err.println("Restricting output to BED regions: " + regions.toAbsolutePath());
         }
-        System.err.printf("Building max-frequency database from %d sources%n", specs.size());
-        BuildStatistics stats = new MaxFreqBuilder().build(specs, output, details, minAf, progressEvery, regionFilter);
+        if (skipBadRows) {
+            System.err.printf("Skipping malformed source rows is enabled; max bad rows per source: %,d%n", maxBadRows);
+        }
+        BuildStatistics stats = new MaxFreqBuilder().build(
+                specs, output, subpopulations, details, minAf, progressEvery, regionFilter, skipBadRows, maxBadRows);
         System.err.printf(
-                "Done. Unique variants: %,d; written: %,d; outside regions: %,d; without eligible AF: %,d; eligible observations: %,d; source rows: %,d%n",
+                "Done. Analysed variants: %,d; written: %,d; outside regions: %,d; without eligible AF: %,d; eligible observations: %,d; source rows: %,d; skipped bad rows: %,d%n",
                 stats.uniqueVariantsSeen(), stats.variantsWritten(), stats.variantsOutsideRegions(),
-                stats.variantsWithoutEligibleFrequency(), stats.eligibleObservations(), stats.sourceRows());
-        System.err.println("ANNOVAR database: " + output.toAbsolutePath());
-        System.err.println("Provenance details: " + details.toAbsolutePath());
+                stats.variantsWithoutEligibleFrequency(), stats.eligibleObservations(), stats.sourceRows(), stats.skippedBadRows());
         return 0;
     }
 
@@ -95,12 +99,21 @@ public final class MaxFreqMain {
         }
     }
 
+    private static boolean parseBoolean(String value, String optionName) {
+        return switch (value.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "true", "yes", "1" -> true;
+            case "false", "no", "0" -> false;
+            default -> throw new IllegalArgumentException("Expected boolean for --" + optionName + ", got: " + value);
+        };
+    }
+
     private static void printUsage() {
         System.out.println("""
-                MaxFreq Builder 1.0.0
+                Variant Frequency DB Integrator 1.0.0
 
-                Build an exact-allele maximum population-frequency database from sorted
-                ANNOVAR-style tab-delimited files. Input files may be plain text or gzip/BGZF.
+                Build integrated exact-allele frequency databases from sorted ANNOVAR-style
+                tab-delimited files. It writes a max-only ANNOVAR database plus a wide
+                database with the configured population/subpopulation frequencies.
 
                 Usage:
                   java -jar maxfreq-builder.jar validate --config sources.tsv
@@ -108,10 +121,13 @@ public final class MaxFreqMain {
                   java -jar maxfreq-builder.jar build \\
                     --config sources.tsv \\
                     --output hg38_maxfreq.txt \\
+                    [--subpopulations hg38_maxfreq.subpopulations.tsv.gz] \\
                     [--details hg38_maxfreq.details.tsv.gz] \\
                     [--regions targets.bed] \\
                     [--min-af 0] \\
-                    [--progress-every 1000000]
+                    [--progress-every 1000000] \\
+                    [--skip-bad-rows true] \\
+                    [--max-bad-rows 1000]
 
                 Configuration columns are documented in examples/sources.example.tsv.
                 All source files must use the same genome build and the same exact ANNOVAR

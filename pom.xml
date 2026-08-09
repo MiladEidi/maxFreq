@@ -6,8 +6,8 @@
   <groupId>org.varevident</groupId>
   <artifactId>maxfreq-builder</artifactId>
   <version>1.0.0</version>
-  <name>MaxFreq Builder</name>
-  <description>Build an allele-specific maximum population-frequency database from sorted ANNOVAR filter databases.</description>
+  <name>Variant Frequency DB Integrator</name>
+  <description>Build integrated allele-frequency databases from sorted ANNOVAR filter databases.</description>
 
   <properties>
     <maven.compiler.release>17</maven.compiler.release>

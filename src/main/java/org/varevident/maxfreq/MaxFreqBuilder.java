@@ -6,7 +6,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.PriorityQueue;
 
 /**
@@ -19,10 +21,13 @@ public final class MaxFreqBuilder {
     public BuildStatistics build(
             List<SourceSpec> specs,
             Path annovarOutput,
+            Path subpopulationOutput,
             Path detailsOutput,
             double minimumOutputFrequency,
             long progressEvery,
-            RegionFilter regionFilter
+            RegionFilter regionFilter,
+            boolean skipBadRows,
+            long maxBadRows
     ) throws IOException {
         if (minimumOutputFrequency < 0.0 || minimumOutputFrequency > 1.0) {
             throw new IllegalArgumentException("minimumOutputFrequency must be in [0,1]");
@@ -38,14 +43,17 @@ public final class MaxFreqBuilder {
         long outsideRegions = 0;
         long eligibleObservations = 0;
         long sourceRows = 0;
+        List<String> subpopulationColumns = subpopulationColumns(specs);
 
         try (BufferedWriter annovarWriter = TextIO.writer(annovarOutput);
+             BufferedWriter subpopulationWriter = TextIO.writer(subpopulationOutput);
              BufferedWriter detailsWriter = TextIO.writer(detailsOutput)) {
 
+            writeSubpopulationHeader(subpopulationWriter, subpopulationColumns);
             detailsWriter.write("Chr\tStart\tEnd\tRef\tAlt\tMaxAF\tSource\tPopulation\tAC\tAN\tEligibleObservations\tSourceCount\tSourceRows\n");
 
             for (SourceSpec spec : specs) {
-                AnnovarSourceReader reader = new AnnovarSourceReader(spec);
+                AnnovarSourceReader reader = new AnnovarSourceReader(spec, skipBadRows, maxBadRows);
                 readers.add(reader);
                 SourceAggregate aggregate = reader.next();
                 if (aggregate != null) {
@@ -56,6 +64,7 @@ public final class MaxFreqBuilder {
             while (!queue.isEmpty()) {
                 VariantKey key = queue.peek().aggregate().key();
                 FrequencyObservation best = null;
+                Map<String, FrequencyObservation> observationsByColumn = new LinkedHashMap<>();
                 long variantEligibleObservations = 0;
                 long variantSourceRows = 0;
                 int sourceCount = 0;
@@ -69,6 +78,13 @@ public final class MaxFreqBuilder {
                     variantEligibleObservations += aggregate.eligibleObservationCount();
                     if (aggregate.best() != null && aggregate.best().isBetterThan(best)) {
                         best = aggregate.best();
+                    }
+                    for (FrequencyObservation observation : aggregate.observations()) {
+                        String column = subpopulationColumn(observation.source(), observation.population());
+                        FrequencyObservation previous = observationsByColumn.get(column);
+                        if (observation.isBetterThan(previous)) {
+                            observationsByColumn.put(column, observation);
+                        }
                     }
                     SourceAggregate next = node.reader().next();
                     if (next != null) {
@@ -89,6 +105,16 @@ public final class MaxFreqBuilder {
                     annovarWriter.write('\t');
                     annovarWriter.write(formatFrequency(best.alleleFrequency()));
                     annovarWriter.newLine();
+
+                    subpopulationWriter.write(key.annovarPrefix());
+                    subpopulationWriter.write('\t');
+                    subpopulationWriter.write(formatFrequency(best.alleleFrequency()));
+                    for (String column : subpopulationColumns) {
+                        subpopulationWriter.write('\t');
+                        FrequencyObservation observation = observationsByColumn.get(column);
+                        subpopulationWriter.write(observation == null ? "." : formatFrequency(observation.alleleFrequency()));
+                    }
+                    subpopulationWriter.newLine();
 
                     detailsWriter.write(key.annovarPrefix());
                     detailsWriter.write('\t');
@@ -113,8 +139,9 @@ public final class MaxFreqBuilder {
 
                 if (progressEvery > 0 && uniqueSeen % progressEvery == 0) {
                     long seconds = Math.max(1, Duration.between(started, Instant.now()).toSeconds());
-                    System.err.printf("Processed %,d unique variants; wrote %,d; rate %,d variants/s%n",
-                            uniqueSeen, written, uniqueSeen / seconds);
+                    System.err.printf(
+                            "Analysed %,d variants; wrote %,d; elapsed %s; rate %,d variants/s%n",
+                            uniqueSeen, written, formatDuration(seconds), uniqueSeen / seconds);
                 }
             }
         } finally {
@@ -131,7 +158,8 @@ public final class MaxFreqBuilder {
             }
         }
 
-        return new BuildStatistics(uniqueSeen, written, noEligible, outsideRegions, eligibleObservations, sourceRows);
+        long skippedBadRows = readers.stream().mapToLong(AnnovarSourceReader::skippedBadRows).sum();
+        return new BuildStatistics(uniqueSeen, written, noEligible, outsideRegions, eligibleObservations, sourceRows, skippedBadRows);
     }
 
     static String formatFrequency(double value) {
@@ -143,5 +171,49 @@ public final class MaxFreqBuilder {
             return fixed.replaceFirst("0+$", "").replaceFirst("\\.$", "");
         }
         return Double.toString(value);
+    }
+
+    private static List<String> subpopulationColumns(List<SourceSpec> specs) {
+        List<String> columns = new ArrayList<>();
+        for (SourceSpec spec : specs) {
+            for (FrequencyField field : spec.frequencyFields()) {
+                columns.add(subpopulationColumn(spec.name(), field.population()));
+            }
+        }
+        return List.copyOf(columns);
+    }
+
+    private static String subpopulationColumn(String source, String population) {
+        return sanitizeColumnName(source) + "_" + sanitizeColumnName(population);
+    }
+
+    private static String sanitizeColumnName(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isEmpty()) {
+            return "unknown";
+        }
+        return trimmed.replaceAll("[^A-Za-z0-9]+", "_").replaceAll("^_+|_+$", "");
+    }
+
+    private static void writeSubpopulationHeader(BufferedWriter writer, List<String> subpopulationColumns) throws IOException {
+        writer.write("Chr\tStart\tEnd\tRef\tAlt\tMaxFreq");
+        for (String column : subpopulationColumns) {
+            writer.write('\t');
+            writer.write(column);
+        }
+        writer.newLine();
+    }
+
+    private static String formatDuration(long seconds) {
+        long hours = seconds / 3600;
+        long minutes = (seconds % 3600) / 60;
+        long remainingSeconds = seconds % 60;
+        if (hours > 0) {
+            return String.format(java.util.Locale.ROOT, "%dh%02dm%02ds", hours, minutes, remainingSeconds);
+        }
+        if (minutes > 0) {
+            return String.format(java.util.Locale.ROOT, "%dm%02ds", minutes, remainingSeconds);
+        }
+        return remainingSeconds + "s";
     }
 }

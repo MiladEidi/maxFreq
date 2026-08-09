@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import heapq
-import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -26,7 +26,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ref-col", required=True, type=int, help="REF column, one-based")
     parser.add_argument("--alt-col", required=True, type=int, help="ALT column, one-based")
     parser.add_argument("--chunk-lines", type=int, default=1_000_000, help="Rows per sort chunk")
-    parser.add_argument("--temp-dir", default=None, help="Temporary directory for sorted chunks")
+    parser.add_argument(
+        "--temp-dir",
+        default=None,
+        help="Base directory for sorted chunks. Default: a temporary folder beside --output",
+    )
+    parser.add_argument("--keep-temp", action="store_true", help="Keep sorted chunks after a failed or completed run")
     parser.add_argument(
         "--header",
         choices=("auto", "yes", "no"),
@@ -115,7 +120,16 @@ def write_chunk(rows: list[tuple], temp_root: Path, chunk_index: int) -> Path:
     with path.open("w", encoding="utf-8", newline="") as writer:
         for _, line in rows:
             writer.write(line)
+    if not path.is_file():
+        raise FileNotFoundError(f"chunk write did not create expected file: {path}")
+    print(f"Wrote sorted chunk {chunk_index:,} with {len(rows):,} row(s): {path}", flush=True)
     return path
+
+
+def make_temp_root(args: argparse.Namespace, output_path: Path) -> Path:
+    base_dir = Path(args.temp_dir) if args.temp_dir else output_path.parent
+    base_dir.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix="sort-annovar-", dir=base_dir))
 
 
 def main() -> int:
@@ -124,8 +138,9 @@ def main() -> int:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(dir=args.temp_dir) as temp_name:
-        temp_root = Path(temp_name)
+    temp_root = make_temp_root(args, output_path)
+    print(f"Using temporary chunk directory: {temp_root}", flush=True)
+    try:
         chunk_paths: list[Path] = []
         rows: list[tuple] = []
         header: str | None = None
@@ -150,10 +165,28 @@ def main() -> int:
                     chunk_paths.append(write_chunk(rows, temp_root, chunk_index))
                     rows = []
                     chunk_index += 1
+                if line_number % 5_000_000 == 0:
+                    print(f"Scanned {line_number:,} input line(s); wrote {len(chunk_paths):,} chunk(s)", flush=True)
 
         if rows:
             chunk_paths.append(write_chunk(rows, temp_root, chunk_index))
 
+        if not chunk_paths:
+            with open_text(output_path, "w") as writer:
+                if header is not None:
+                    writer.write(header)
+            print(f"No data rows found. Wrote header-only output: {output_path}")
+            return 0
+
+        missing_chunks = [path for path in chunk_paths if not path.is_file()]
+        if missing_chunks:
+            raise FileNotFoundError(
+                "Sorted chunk file(s) disappeared before merge. "
+                "Use --temp-dir on a stable disk with enough free space. Missing: "
+                + ", ".join(str(path) for path in missing_chunks[:5])
+            )
+
+        print(f"Merging {len(chunk_paths):,} sorted chunk(s) into {output_path}", flush=True)
         handles = [path.open("r", encoding="utf-8", newline="") for path in chunk_paths]
         try:
             keyed_lines = []
@@ -175,6 +208,11 @@ def main() -> int:
         finally:
             for handle in handles:
                 handle.close()
+    finally:
+        if args.keep_temp:
+            print(f"Keeping temporary chunk directory: {temp_root}", flush=True)
+        else:
+            shutil.rmtree(temp_root, ignore_errors=True)
 
     print(f"Sorted {input_path} -> {output_path}")
     return 0

@@ -1,11 +1,14 @@
 .agents/
 .codex/
+.vscode/
 build/
 target/
+__pycache__/
 
 *.class
 *.jar
 *.log
+*.pyc
 
 .env
 .env.*

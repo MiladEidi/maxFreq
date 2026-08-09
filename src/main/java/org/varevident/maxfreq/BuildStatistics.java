@@ -11,6 +11,7 @@ record BuildStatistics(
         long variantsWithoutEligibleFrequency,
         long variantsOutsideRegions,
         long eligibleObservations,
-        long sourceRows
+        long sourceRows,
+        long skippedBadRows
 ) {
 }

@@ -1,0 +1,13 @@
+source	path	chr_col	start_col	end_col	ref_col	alt_col	frequency_fields	min_an	require_an	priority
+Abraom	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_abraom.txt	1	2	3	4	5	abraom_freq	0	false	10
+1000GP	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_ALL.sites.2015_08.txt	1	2	0	3	4	5	0	false	5
+AllOfUs	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_allofus.txt	1	2	3	4	5	gvs_all_af:global;gvs_max_af:max;gvs_afr_af:AFR;gvs_amr_af:AMR;gvs_eas_af:EAS;gvs_eur_af:EUR;gvs_mid_af:MID;gvs_oth_af:OTH;gvs_sas_af:SAS	0	false	4
+GME	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_gme.txt	1	2	3	4	5	GME_AF:global;GME_NWA:NWA;GME_NEA:NEA;GME_AP:AP;GME_Israel:Israel;GME_SD:SD;GME_TP:TP;GME_CA:CA	0	false	6
+ExAC	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_exac03.txt	1	2	3	4	5	ExAC_ALL:ALL;ExAC_AFR:AFR;ExAC_AMR:AMR;ExAC_EAS:EAS;ExAC_FIN:FIN;ExAC_NFE:NFE;ExAC_OTH:OTH;ExAC_SAS:SAS	0	false	5
+gnomad41_exome	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_gnomad41_exome.txt	1	2	3	4	5	gnomad41_exome_AF:global;gnomad41_exome_AF_grpmax:grpmax;gnomad41_exome_AF_afr:AFR;gnomad41_exome_AF_amr:AMR;gnomad41_exome_AF_asj:ASJ;gnomad41_exome_AF_eas:EAS;gnomad41_exome_AF_fin:FIN;gnomad41_exome_AF_mid:MID;gnomad41_exome_AF_nfe:NFE;gnomad41_exome_AF_remaining:remaining;gnomad41_exome_AF_sas:SAS	0	false	5
+gnomad41_genome	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_gnomad41_genome_sorted.txt	1	2	3	4	5	gnomad41_genome_AF:global;gnomad41_genome_AF_grpmax:grpmax;gnomad41_genome_AF_afr:AFR;gnomad41_genome_AF_ami:AMI;gnomad41_genome_AF_amr:AMR;gnomad41_genome_AF_asj:ASJ;gnomad41_genome_AF_eas:EAS;gnomad41_genome_AF_fin:FIN;gnomad41_genome_AF_mid:MID;gnomad41_genome_AF_nfe:NFE;gnomad41_genome_AF_remaining:remaining;gnomad41_genome_AF_sas:SAS	0	false	5
+hrcr1	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_hrcr1.txt	1	2	3	4	5	HRC_AF:global:HRC_AC:HRC_AN;HRC_non1000G_AF:non1000G:HRC_non1000G_AC:HRC_non1000G_AN	0	false	5
+Iranome	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_iranome.txt	1	2	3	4	5	Iranome_AF	0	false	8
+Kaviar	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_kaviar.txt	1	2	3	4	5	Kaviar_AF:global:Kaviar_AC:Kaviar_AN	0	false	6
+Regeneron	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_regeneron.txt	1	2	3	4	5	REGENERON_ALL_AF:ALL:REGENERON_ALL_AC:REGENERON_ALL_AN	0	false	4
+esp6500siv2_all	E:\NGSneeds\Annovar_Databases\hg38_databases\hg38_esp6500siv2_all.txt	1	2	3	4	5	6	0	false	6

@@ -1,6 +1,9 @@
-# MaxFreq Builder
+# Variant Frequency DB Integrator
 
-`MaxFreq Builder` creates an allele-specific maximum population-frequency database from multiple updated ANNOVAR filter databases.
+`Variant Frequency DB Integrator` combines important population-frequency databases into two allele-specific outputs:
+
+- a compact ANNOVAR database containing only the maximum frequency per variant
+- a wide TSV database containing the maximum frequency plus all configured population/subpopulation frequencies
 
 It uses a streaming k-way merge, so it does **not** load all variants into RAM. Memory usage is approximately proportional to the number of source files.
 
@@ -31,18 +34,6 @@ Output:
 
 ```text
 target/maxfreq-builder-1.0.0.jar
-```
-
-### Without Maven
-
-```bash
-./scripts/build.sh
-```
-
-Output:
-
-```text
-build/maxfreq-builder.jar
 ```
 
 ## Configuration
@@ -155,12 +146,13 @@ For files with only one position column, use `--end-col 0`; the script derives
 After sorting, update the `path` for that source in `sources.tsv` to the sorted
 file and run `validate` again.
 
-## Build the database
+## Build the Databases
 
 ```bash
 java -jar maxfreq-builder.jar build \
   --config sources.tsv \
   --output humandb/hg38_maxfreq.txt \
+  --subpopulations humandb/hg38_maxfreq.subpopulations.tsv.gz \
   --details humandb/hg38_maxfreq.details.tsv.gz \
   --regions targets.bed \
   --min-af 0 \
@@ -185,7 +177,16 @@ Outputs:
 Chr  Start  End  Ref  Alt  MaxAF
 ```
 
-2. `hg38_maxfreq.details.tsv.gz`: provenance table containing source, population, AC, AN, number of eligible observations, source count, and duplicate source-row count.
+2. `hg38_maxfreq.subpopulations.tsv.gz`: wide TSV database containing the same allele columns, one `MaxFreq` column, and one AF column for every configured `source_population` field. Missing or ineligible observations are written as `.`.
+
+```text
+Chr  Start  End  Ref  Alt  MaxFreq  gnomad41_exome_global  gnomad41_exome_AFR  ...
+```
+
+If `--subpopulations` is omitted, this file is written beside `--output` as
+`<output>.subpopulations.tsv.gz`.
+
+3. `hg38_maxfreq.details.tsv.gz`: provenance table containing source, population, AC, AN, number of eligible observations, source count, and duplicate source-row count.
 
 ## Index for ANNOVAR
 
@@ -220,6 +221,8 @@ For each exact allele:
 5. Ties prefer larger AN, then lower source priority, then stable lexical order.
 
 The main ANNOVAR file contains only the numeric maximum so `-score_threshold` remains usable. Provenance is stored separately in the details file.
+
+By default, build progress is logged once per 1,000,000 analysed variants. Problem logs, such as malformed source rows when `--skip-bad-rows true` is enabled, are still printed.
 
 ## Demo
 

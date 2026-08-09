@@ -18,23 +18,65 @@ import java.util.TreeMap;
 public final class AnnovarSourceReader implements Closeable {
     private final SourceSpec spec;
     private final BufferedReader reader;
+    private final String[] header;
     private final ResolvedVariantColumns variantColumns;
     private final List<ResolvedFrequencyField> frequencyFields;
+    private final boolean skipBadRows;
+    private final long maxBadRows;
     private long lineNumber;
+    private long skippedBadRows;
     private ParsedLine buffered;
     private List<SourceAggregate> aggregateBuffer = List.of();
     private int aggregateBufferIndex;
 
     public AnnovarSourceReader(SourceSpec spec) throws IOException {
+        this(spec, false, 0);
+    }
+
+    public AnnovarSourceReader(SourceSpec spec, boolean skipBadRows, long maxBadRows) throws IOException {
         this.spec = spec;
         this.reader = TextIO.reader(spec.path());
-        String[] header = spec.requiresHeader() ? readHeader() : null;
+        this.skipBadRows = skipBadRows;
+        this.maxBadRows = maxBadRows;
+        this.header = spec.requiresHeader() ? readHeader() : null;
         this.variantColumns = spec.resolveVariantColumns(header);
         this.frequencyFields = resolveFrequencyFields(header);
     }
 
     public SourceSpec spec() {
         return spec;
+    }
+
+    public long lineNumber() {
+        return lineNumber;
+    }
+
+    public long skippedBadRows() {
+        return skippedBadRows;
+    }
+
+    public String describeResolvedColumns() {
+        StringBuilder text = new StringBuilder();
+        text.append("variant columns: chr=").append(describeColumn(variantColumns.chromosomeColumn()))
+                .append(", start=").append(describeColumn(variantColumns.startColumn()))
+                .append(", end=").append(variantColumns.endColumn() == 0 ? "derived-from-ref" : describeColumn(variantColumns.endColumn()))
+                .append(", ref=").append(describeColumn(variantColumns.refColumn()))
+                .append(", alt=").append(describeColumn(variantColumns.altColumn()))
+                .append("; frequency fields: ");
+        for (int i = 0; i < frequencyFields.size(); i++) {
+            ResolvedFrequencyField field = frequencyFields.get(i);
+            if (i > 0) {
+                text.append("; ");
+            }
+            text.append(field.population()).append(" AF=").append(describeColumn(field.afColumn()));
+            if (field.acColumn() != 0) {
+                text.append(", AC=").append(describeColumn(field.acColumn()));
+            }
+            if (field.anColumn() != 0) {
+                text.append(", AN=").append(describeColumn(field.anColumn()));
+            }
+        }
+        return text.toString();
     }
 
     public SourceAggregate next() throws IOException {
@@ -87,7 +129,7 @@ public final class AnnovarSourceReader implements Closeable {
             }
             String[] columns = line.split("\t", -1);
             try {
-                long start = Long.parseLong(value(columns, variantColumns.startColumn()));
+                long start = parseRequiredLong(columns, variantColumns.startColumn(), "Start");
                 String ref = value(columns, variantColumns.refColumn());
                 VariantKey key = new VariantKey(
                         value(columns, variantColumns.chromosomeColumn()),
@@ -97,9 +139,13 @@ public final class AnnovarSourceReader implements Closeable {
                         value(columns, variantColumns.altColumn())
                 );
                 FrequencyObservation best = null;
+                List<FrequencyObservation> observations = new ArrayList<>();
                 long eligible = 0;
                 for (ResolvedFrequencyField field : frequencyFields) {
-                    Double af = parseOptionalDouble(valueOrEmpty(columns, field.afColumn()));
+                    Double af = parseOptionalDouble(
+                            valueOrEmpty(columns, field.afColumn()),
+                            "AF field '" + field.population() + "'",
+                            field.afColumn());
                     if (af == null) {
                         continue;
                     }
@@ -108,8 +154,14 @@ public final class AnnovarSourceReader implements Closeable {
                         continue;
                     }
 
-                    Long ac = field.acColumn() == 0 ? null : parseOptionalLong(valueOrEmpty(columns, field.acColumn()));
-                    Long an = field.anColumn() == 0 ? null : parseOptionalLong(valueOrEmpty(columns, field.anColumn()));
+                    Long ac = field.acColumn() == 0 ? null : parseOptionalLong(
+                            valueOrEmpty(columns, field.acColumn()),
+                            "AC field '" + field.population() + "'",
+                            field.acColumn());
+                    Long an = field.anColumn() == 0 ? null : parseOptionalLong(
+                            valueOrEmpty(columns, field.anColumn()),
+                            "AN field '" + field.population() + "'",
+                            field.anColumn());
                     if (spec.requireAlleleNumber() && an == null) {
                         continue;
                     }
@@ -119,15 +171,30 @@ public final class AnnovarSourceReader implements Closeable {
 
                     FrequencyObservation observation = new FrequencyObservation(
                             key, af, spec.name(), field.population(), ac, an, spec.priority());
+                    observations.add(observation);
                     eligible++;
                     if (observation.isBetterThan(best)) {
                         best = observation;
                     }
                 }
-                return new ParsedLine(key, best, eligible);
+                return new ParsedLine(key, best, List.copyOf(observations), eligible);
             } catch (RuntimeException error) {
-                throw new IllegalArgumentException(
-                        "Cannot parse " + spec.name() + " at " + spec.path() + ":" + lineNumber + ": " + error.getMessage(), error);
+                String message = "Cannot parse " + spec.name() + " at " + spec.path() + ":" + lineNumber + ": "
+                        + error.getMessage() + ". Row has " + columns.length + " tab-delimited columns; preview: "
+                        + preview(columns);
+                if (!skipBadRows) {
+                    throw new IllegalArgumentException(message, error);
+                }
+                skippedBadRows++;
+                if (maxBadRows >= 0 && skippedBadRows > maxBadRows) {
+                    throw new IllegalArgumentException(
+                            "Too many bad rows for " + spec.name() + ": skipped " + skippedBadRows
+                                    + " rows, limit is " + maxBadRows + ". Last error: " + message, error);
+                }
+                if (skippedBadRows <= 20 || skippedBadRows % 1000 == 0) {
+                    System.err.printf("WARNING: Skipping bad row %,d for source %s: %s%n",
+                            skippedBadRows, spec.name(), message);
+                }
             }
         }
         return null;
@@ -137,6 +204,7 @@ public final class AnnovarSourceReader implements Closeable {
         MutableAggregate aggregate = byKey.computeIfAbsent(line.key(), ignored -> new MutableAggregate());
         aggregate.rawLineCount++;
         aggregate.eligibleObservationCount += line.eligibleObservationCount();
+        aggregate.observations.addAll(line.observations());
         if (line.bestObservation() != null && line.bestObservation().isBetterThan(aggregate.best)) {
             aggregate.best = line.bestObservation();
         }
@@ -170,7 +238,7 @@ public final class AnnovarSourceReader implements Closeable {
 
     private long resolveEnd(String[] columns, long start, String ref) {
         if (variantColumns.endColumn() > 0) {
-            return Long.parseLong(value(columns, variantColumns.endColumn()));
+            return parseRequiredLong(columns, variantColumns.endColumn(), "End");
         }
         return start + referenceLength(ref) - 1;
     }
@@ -186,18 +254,38 @@ public final class AnnovarSourceReader implements Closeable {
         return normalized.length();
     }
 
-    private static Double parseOptionalDouble(String value) {
-        if (isMissing(value)) {
-            return null;
+    private long parseRequiredLong(String[] columns, int oneBasedColumn, String fieldName) {
+        String raw = value(columns, oneBasedColumn);
+        try {
+            return Long.parseLong(raw);
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException(
+                    fieldName + " column " + describeColumn(oneBasedColumn) + " must be an integer, got '" + raw + "'", error);
         }
-        return Double.parseDouble(value);
     }
 
-    private static Long parseOptionalLong(String value) {
+    private Double parseOptionalDouble(String value, String fieldName, int oneBasedColumn) {
         if (isMissing(value)) {
             return null;
         }
-        return Long.parseLong(value);
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException(
+                    fieldName + " column " + describeColumn(oneBasedColumn) + " must be numeric, got '" + value + "'", error);
+        }
+    }
+
+    private Long parseOptionalLong(String value, String fieldName, int oneBasedColumn) {
+        if (isMissing(value)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException(
+                    fieldName + " column " + describeColumn(oneBasedColumn) + " must be an integer, got '" + value + "'", error);
+        }
     }
 
     private static boolean isMissing(String value) {
@@ -215,6 +303,32 @@ public final class AnnovarSourceReader implements Closeable {
             resolved.add(field.resolve(header, spec.name(), spec.path()));
         }
         return List.copyOf(resolved);
+    }
+
+    private String describeColumn(int oneBasedColumn) {
+        if (oneBasedColumn <= 0) {
+            return "unavailable";
+        }
+        if (header != null && oneBasedColumn <= header.length) {
+            return oneBasedColumn + " (" + header[oneBasedColumn - 1] + ")";
+        }
+        return Integer.toString(oneBasedColumn);
+    }
+
+    private static String preview(String[] columns) {
+        int limit = Math.min(columns.length, 12);
+        List<String> parts = new ArrayList<>(limit + 1);
+        for (int i = 0; i < limit; i++) {
+            String value = columns[i];
+            if (value.length() > 80) {
+                value = value.substring(0, 77) + "...";
+            }
+            parts.add((i + 1) + "='" + value + "'");
+        }
+        if (columns.length > limit) {
+            parts.add("...");
+        }
+        return String.join(", ", parts);
     }
 
     private String[] readHeader() throws IOException {
@@ -242,16 +356,22 @@ public final class AnnovarSourceReader implements Closeable {
         reader.close();
     }
 
-    private record ParsedLine(VariantKey key, FrequencyObservation bestObservation, long eligibleObservationCount) {
+    private record ParsedLine(
+            VariantKey key,
+            FrequencyObservation bestObservation,
+            List<FrequencyObservation> observations,
+            long eligibleObservationCount
+    ) {
     }
 
     private static final class MutableAggregate {
         private FrequencyObservation best;
+        private final List<FrequencyObservation> observations = new ArrayList<>();
         private long eligibleObservationCount;
         private long rawLineCount;
 
         private SourceAggregate toAggregate(VariantKey key) {
-            return new SourceAggregate(key, best, eligibleObservationCount, rawLineCount);
+            return new SourceAggregate(key, best, List.copyOf(observations), eligibleObservationCount, rawLineCount);
         }
     }
 }
