@@ -9,3 +9,5 @@
 C:/Users/uid-1244/Desktop/maxFreq/MaxFreqDatabases/hg38_realSuperDB.txt.gz filter=lfs diff=lfs merge=lfs -text
 MaxFreqDatabaseshg38_realSuperDB.txt.gz filter=lfs diff=lfs merge=lfs -text
 MaxFreqDatabases/hg38_realSuperDB.txt.gz filter=lfs diff=lfs merge=lfs -text
+*.gz filter=lfs diff=lfs merge=lfs -text
+MaxFreqDatabases/*.gz filter=lfs diff=lfs merge=lfs -text
